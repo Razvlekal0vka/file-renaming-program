@@ -160,16 +160,22 @@ class FileRenamerApp:
         
         # Прогресс бар
         self.progress = ttk.Progressbar(main_frame, mode='determinate', style="Modern.Horizontal.TProgressbar")
-        self.progress.grid(row=5, column=0, columnspan=4, sticky=(tk.W, tk.E), pady=10)
+        self.progress.grid(row=5, column=0, columnspan=4, sticky=(tk.W, tk.E), pady=(10, 4))
+        # Прогресс текущей пары
+        self.progress_pair = ttk.Progressbar(main_frame, mode='determinate', style="Modern.Horizontal.TProgressbar")
+        self.progress_pair.grid(row=6, column=0, columnspan=4, sticky=(tk.W, tk.E), pady=(0, 10))
         
         # Кнопка запуска
         self.start_button = ttk.Button(main_frame, text="ЗАПУСТИТЬ ОБРАБОТКУ", 
                                      command=self.start_renaming, style="Accent.TButton")
-        self.start_button.grid(row=6, column=0, columnspan=4, pady=20)
+        self.start_button.grid(row=7, column=0, columnspan=4, pady=20)
         
         # Статус
         self.status_label = ttk.Label(main_frame, text="Готов к работе")
-        self.status_label.grid(row=7, column=0, columnspan=4, pady=5)
+        self.status_label.grid(row=8, column=0, columnspan=4, pady=5)
+        # Детальный прогресс
+        self.progress_text = ttk.Label(main_frame, text="")
+        self.progress_text.grid(row=9, column=0, columnspan=4, pady=(0,5))
 
         # Подготовка чередующихся строк
         self.folder_tree.tag_configure('oddrow', background=self._get_color('table_row_alt'))
@@ -503,9 +509,27 @@ class FileRenamerApp:
         
         # Запуск в отдельном потоке
         self.start_button.config(state='disabled')
-        self.progress.config(maximum=len(self.folder_pairs))
+        # Подсчет файлов заранее
+        total_files = 0
+        pair_file_counts = []
+        for pair in self.folder_pairs:
+            src = Path(pair['source'])
+            count = self.count_files_in_dir(src) if src.exists() else 0
+            pair_file_counts.append(count)
+            total_files += count
+
+        self.total_files = total_files
+        self.processed_files = 0
+        self.pair_file_counts = pair_file_counts
+        self.current_pair_index = -1
+
+        # Настройка прогресс-баров
+        self.progress.config(maximum=max(1, self.total_files))
         self.progress['value'] = 0
+        self.progress_pair.config(maximum=1)
+        self.progress_pair['value'] = 0
         self.status_label.config(text="Обработка...")
+        self.progress_text.config(text=f"0 / {self.total_files} файлов (0%)")
         
         thread = threading.Thread(target=self.rename_files)
         thread.daemon = True
@@ -523,6 +547,9 @@ class FileRenamerApp:
                     
                     # Обновляем статус
                     self.root.after(0, self.update_status, f"Обработка папки {i+1} из {len(self.folder_pairs)}: {source_path.name}")
+                    self.current_pair_index = i
+                    pair_total = self.pair_file_counts[i] if i < len(self.pair_file_counts) else 0
+                    self.root.after(0, self.reset_pair_progress, max(1, pair_total))
                     
                     # Удаляем папку назначения если существует
                     if dest_path.exists():
@@ -538,13 +565,15 @@ class FileRenamerApp:
                         separator=self.separator_var.get(),
                         quote=self.quote_var.get(),
                         include_root=self.include_root_var.get(),
-                        root_name=source_path.name
+                        root_name=source_path.name,
+                        on_file_processed=lambda rel: self.root.after(0, self.increment_progress, rel)
                     )
                     total_renamed += renamed_count
                     processed_pairs += 1
                     
                     # Обновляем прогресс
-                    self.root.after(0, self.update_progress, processed_pairs)
+                    # Завершение прогресса пары
+                    self.root.after(0, self.finish_pair_progress)
                     
                 except Exception as e:
                     print(f"Ошибка при обработке пары {pair['source']} -> {pair['destination']}: {e}")
@@ -556,7 +585,7 @@ class FileRenamerApp:
         except Exception as e:
             self.root.after(0, self.rename_error, str(e))
     
-    def rename_files_recursive(self, current_path, root_path, total_renamed=0, separator=" + ", quote='"', include_root=False, root_name=None):
+    def rename_files_recursive(self, current_path, root_path, total_renamed=0, separator=" + ", quote='"', include_root=False, root_name=None, on_file_processed=None):
         files_in_this_dir = 0
         
         for item in current_path.iterdir():
@@ -588,6 +617,11 @@ class FileRenamerApp:
                     try:
                         item.rename(new_path)
                         total_renamed += 1
+                        if on_file_processed is not None:
+                            try:
+                                on_file_processed(str(relative_path))
+                            except Exception:
+                                pass
                     except Exception as e:
                         print(f"Ошибка переименования {item} в {new_path}: {e}")
                     
@@ -596,7 +630,8 @@ class FileRenamerApp:
                 total_renamed = self.rename_files_recursive(
                     item, root_path, total_renamed,
                     separator=separator, quote=quote,
-                    include_root=include_root, root_name=root_name
+                    include_root=include_root, root_name=root_name,
+                    on_file_processed=on_file_processed
                 )
         
         return total_renamed
@@ -608,11 +643,43 @@ class FileRenamerApp:
     def update_progress(self, value):
         """Обновляет прогресс-бар в главном потоке"""
         self.progress['value'] = value
+
+    def reset_pair_progress(self, pair_total):
+        self.progress_pair.config(maximum=max(1, pair_total))
+        self.progress_pair['value'] = 0
+
+    def finish_pair_progress(self):
+        self.progress_pair['value'] = self.progress_pair['maximum']
+
+    def increment_progress(self, relative_path):
+        # Обновляем суммарный прогресс
+        self.processed_files = min(self.total_files, self.processed_files + 1)
+        self.progress['value'] = self.processed_files
+        # Обновляем прогресс текущей пары
+        self.progress_pair['value'] = min(self.progress_pair['maximum'], self.progress_pair['value'] + 1)
+        # Обновляем текст
+        percent = 0 if self.total_files == 0 else int(self.processed_files * 100 / self.total_files)
+        # Укорачиваем путь для отображения
+        disp = relative_path
+        if len(disp) > 60:
+            disp = '…' + disp[-59:]
+        self.progress_text.config(text=f"{self.processed_files} / {self.total_files} файлов ({percent}%) — {disp}")
+
+    def count_files_in_dir(self, directory: Path) -> int:
+        total = 0
+        try:
+            for root, dirs, files in os.walk(directory):
+                total += len(files)
+        except Exception:
+            pass
+        return total
     
     def rename_complete(self, renamed_count, processed_pairs):
-        self.progress['value'] = len(self.folder_pairs)
+        self.progress['value'] = self.total_files if hasattr(self, 'total_files') else len(self.folder_pairs)
+        self.finish_pair_progress()
         self.start_button.config(state='normal')
         self.status_label.config(text="Готово! Обработка завершена")
+        self.progress_text.config(text=f"Переименовано файлов: {renamed_count}")
         messagebox.showinfo("Успех", "Успешно переименовано")
     
     def rename_error(self, error_message):
