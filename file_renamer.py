@@ -22,7 +22,8 @@ class FileRenamerApp:
         
         # Глобальные настройки: разделитель и кавычки для имен
         self.separator_var = tk.StringVar(value=" + ")
-        self.quote_var = tk.StringVar(value='"')
+        default_quote = "'" if os.name == 'nt' else '"'
+        self.quote_var = tk.StringVar(value=default_quote)
         self.include_root_var = tk.BooleanVar(value=False)
         
         self.setup_ui()
@@ -262,6 +263,40 @@ class FileRenamerApp:
         for index, item_id in enumerate(self.folder_tree.get_children()):
             tag = 'evenrow' if index % 2 == 0 else 'oddrow'
             self.folder_tree.item(item_id, tags=(tag,))
+
+    def _invalid_filename_chars(self):
+        return '<>:"/\\|?*' if os.name == 'nt' else '/'
+
+    def _sanitize_option(self, value, fallback=""):
+        if value is None:
+            value = ""
+        invalid_chars = self._invalid_filename_chars()
+        sanitized = ''.join(ch for ch in value if ch not in invalid_chars)
+        if sanitized:
+            return sanitized
+        return fallback
+
+    def _effective_separator(self, separator):
+        sanitized = self._sanitize_option(separator, fallback="")
+        if not sanitized and separator:
+            # Если пользователь указал только запрещенные символы, используем безопасный дефолт
+            return "_"
+        return sanitized
+
+    def _effective_quote(self, quote):
+        fallback = "'" if os.name == 'nt' else ""
+        sanitized = self._sanitize_option(quote, fallback=fallback)
+        return sanitized
+
+    def _sanitize_output_name(self, name):
+        if name is None:
+            return "_"
+        invalid_chars = self._invalid_filename_chars()
+        sanitized = ''.join(ch for ch in name if ch not in invalid_chars and ch != '\0')
+        sanitized = sanitized.strip()
+        if os.name == 'nt':
+            sanitized = sanitized.rstrip('. ')
+        return sanitized or "_"
     
     def create_tooltip(self, widget, text):
         """Создает подсказку для виджета"""
@@ -587,6 +622,8 @@ class FileRenamerApp:
     
     def rename_files_recursive(self, current_path, root_path, total_renamed=0, separator=" + ", quote='"', include_root=False, root_name=None, on_file_processed=None):
         files_in_this_dir = 0
+        safe_quote = self._effective_quote(quote or '')
+        safe_separator = self._effective_separator(separator or '')
         
         for item in current_path.iterdir():
             if item.is_file():
@@ -602,13 +639,18 @@ class FileRenamerApp:
                 file_extension = item.suffix  # Расширение файла
                 
                 # Объединяем названия папок с пользовательскими параметрами
+                components = []
                 if folder_names:
-                    q = quote or ''
-                    sep = separator if separator is not None else ''
-                    folder_part = sep.join([f"{q}{name}{q}" if q else f"{name}" for name in folder_names])
-                    new_name = f"{folder_part}{sep}{file_name}{file_extension}"
+                    components.extend([f"{safe_quote}{name}{safe_quote}" if safe_quote else name for name in folder_names])
+                components.append(file_name)
+
+                if safe_separator:
+                    base_name = safe_separator.join(components)
                 else:
-                    new_name = f"{file_name}{file_extension}"
+                    base_name = ''.join(components)
+
+                sanitized_base = self._sanitize_output_name(base_name)
+                new_name = f"{sanitized_base}{file_extension}"
                 
                 # Переименовываем файл
                 new_path = item.parent / new_name
@@ -629,7 +671,7 @@ class FileRenamerApp:
                 # Рекурсивно обрабатываем подпапки
                 total_renamed = self.rename_files_recursive(
                     item, root_path, total_renamed,
-                    separator=separator, quote=quote,
+                    separator=safe_separator, quote=safe_quote,
                     include_root=include_root, root_name=root_name,
                     on_file_processed=on_file_processed
                 )
