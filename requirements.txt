@@ -1,0 +1,17 @@
+# File Renaming Program Requirements
+# Требования программы переименования файлов
+# Requirements for File Renaming Program
+
+# This program uses only standard Python libraries
+# Программа использует только стандартные библиотеки Python
+# No external dependencies required
+# Внешние зависимости не требуются
+
+# Standard libraries used:
+# Используемые стандартные библиотеки:
+# - tkinter (GUI interface / Графический интерфейс)
+# - pathlib (path operations / Работа с путями)
+# - shutil (file copying / Копирование файлов)
+# - threading (multithreading / Многопоточность)
+# - os (file system operations / Операции с файловой системой)
+
