@@ -1,0 +1,30 @@
+# Auto detect text files and perform LF normalization
+# Автоматическое определение текстовых файлов и нормализация LF
+* text=auto
+
+# Explicitly declare text files you want to always be normalized and converted
+# Явно объявляем текстовые файлы, которые всегда должны быть нормализованы
+*.py text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Denote all files that are truly binary and should not be modified
+# Обозначаем все файлы, которые являются действительно бинарными и не должны изменяться
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+
+# Force LF line endings for shell scripts
+# Принудительные окончания строк LF для shell-скриптов
+*.sh text eol=lf
+
+# VERSION file
+# Файл версии
+VERSION text eol=lf
+
