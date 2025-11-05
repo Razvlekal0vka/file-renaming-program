@@ -630,6 +630,11 @@ class FileRenamerApp:
         self.processed_files = 0
         self.pair_file_counts = pair_file_counts
         self.current_pair_index = -1
+        
+        # Performance optimization: batch UI updates / Оптимизация производительности: батчинг обновлений UI
+        self.ui_update_batch_size = max(1, total_files // 100) if total_files > 0 else 10  # Update every 1% or every 10 files
+        self.files_since_last_update = 0
+        self.last_update_path = ""
 
         # Configure progress bars / Настройка прогресс-баров
         self.progress.config(maximum=max(1, self.total_files))
@@ -671,14 +676,13 @@ class FileRenamerApp:
                     if source_path.exists():
                         shutil.copytree(source_path, dest_path)
                     
-                    # Rename files / Переименовываем файлы
-                    renamed_count = self.rename_files_recursive(
-                        dest_path, dest_path,
+                    # Rename files (optimized version) / Переименовываем файлы (оптимизированная версия)
+                    renamed_count = self.rename_files_optimized(
+                        dest_path,
                         separator=self.separator_var.get(),
                         quote=self.quote_var.get(),
                         include_root=self.include_root_var.get(),
-                        root_name=source_path.name,
-                        on_file_processed=lambda rel: self.root.after(0, self.increment_progress, rel)
+                        root_name=source_path.name
                     )
                     total_renamed += renamed_count
                     processed_pairs += 1
@@ -697,10 +701,79 @@ class FileRenamerApp:
         except Exception as e:
             self.root.after(0, self.rename_error, str(e))
     
+    def rename_files_optimized(self, root_path, separator=" + ", quote='"', include_root=False, root_name=None):
+        """
+        Optimized file renaming using os.walk for better performance.
+        Оптимизированное переименование файлов с использованием os.walk для лучшей производительности.
+        """
+        safe_quote = self._effective_quote(quote or '')
+        safe_separator = self._effective_separator(separator or '')
+        total_renamed = 0
+        
+        # Pre-calculate folder name formatting / Предварительно вычисляем форматирование имен папок
+        def format_folder_name(name):
+            return f"{safe_quote}{name}{safe_quote}" if safe_quote else name
+        
+        # Use os.walk for faster directory traversal / Используем os.walk для более быстрого обхода директорий
+        root_path_str = str(root_path)
+        for root, dirs, files in os.walk(root_path_str):
+            root_path_obj = Path(root)
+            
+            for filename in files:
+                file_path = root_path_obj / filename
+                
+                # Get relative path from root folder / Получаем относительный путь от корневой папки
+                try:
+                    relative_path = file_path.relative_to(root_path)
+                except ValueError:
+                    continue
+                
+                # Create new filename from folder names / Создаем новое имя файла из названий папок
+                folder_names = list(relative_path.parts[:-1])  # All parts except filename / Все части кроме имени файла
+                if include_root and root_name:
+                    folder_names.insert(0, root_name)
+                
+                file_stem = file_path.stem  # Filename without extension / Имя файла без расширения
+                file_ext = file_path.suffix  # File extension / Расширение файла
+                
+                # Combine folder names with user parameters / Объединяем названия папок с пользовательскими параметрами
+                if folder_names:
+                    folder_part = safe_separator.join(format_folder_name(name) for name in folder_names)
+                    base_name = f"{folder_part}{safe_separator}{file_stem}" if safe_separator else f"{folder_part}{file_stem}"
+                else:
+                    base_name = file_stem
+
+                sanitized_base = self._sanitize_output_name(base_name)
+                new_name = f"{sanitized_base}{file_ext}"
+                
+                # Rename file / Переименовываем файл
+                new_path = root_path_obj / new_name
+                
+                if str(new_path) != str(file_path):  # Avoid renaming to same name / Избегаем переименования в то же имя
+                    try:
+                        file_path.rename(new_path)
+                        total_renamed += 1
+                        
+                        # Batch UI updates for better performance / Батчинг обновлений UI для лучшей производительности
+                        self.files_since_last_update += 1
+                        if self.files_since_last_update >= self.ui_update_batch_size:
+                            self.root.after(0, self.increment_progress_batch, str(relative_path), self.files_since_last_update)
+                            self.files_since_last_update = 0
+                            self.last_update_path = str(relative_path)
+                    except Exception as e:
+                        print(f"Ошибка переименования {file_path} в {new_path}: {e}")
+        
+        # Update remaining files / Обновляем оставшиеся файлы
+        if self.files_since_last_update > 0:
+            self.root.after(0, self.increment_progress_batch, self.last_update_path, self.files_since_last_update)
+            self.files_since_last_update = 0
+        
+        return total_renamed
+    
     def rename_files_recursive(self, current_path, root_path, total_renamed=0, separator=" + ", quote='"', include_root=False, root_name=None, on_file_processed=None):
         """
-        Recursively rename files in directory tree.
-        Рекурсивно переименовывает файлы в дереве директорий.
+        Recursively rename files in directory tree (legacy method, kept for compatibility).
+        Рекурсивно переименовывает файлы в дереве директорий (устаревший метод, оставлен для совместимости).
         """
         files_in_this_dir = 0
         safe_quote = self._effective_quote(quote or '')
@@ -790,14 +863,33 @@ class FileRenamerApp:
 
     def increment_progress(self, relative_path):
         """
-        Increment progress counters.
-        Увеличить счетчики прогресса.
+        Increment progress counters (single file update).
+        Увеличить счетчики прогресса (обновление одного файла).
         """
         # Update total progress / Обновляем суммарный прогресс
         self.processed_files = min(self.total_files, self.processed_files + 1)
         self.progress['value'] = self.processed_files
         # Update current pair progress / Обновляем прогресс текущей пары
         self.progress_pair['value'] = min(self.progress_pair['maximum'], self.progress_pair['value'] + 1)
+        # Update text / Обновляем текст
+        percent = 0 if self.total_files == 0 else int(self.processed_files * 100 / self.total_files)
+        # Shorten path for display / Укорачиваем путь для отображения
+        disp = relative_path
+        if len(disp) > 60:
+            disp = '…' + disp[-59:]
+        self.progress_text.config(text=f"{self.processed_files} / {self.total_files} файлов ({percent}%) — {disp}")
+    
+    def increment_progress_batch(self, relative_path, batch_size):
+        """
+        Increment progress counters (batch update for better performance).
+        Увеличить счетчики прогресса (батч-обновление для лучшей производительности).
+        """
+        # Update total progress / Обновляем суммарный прогресс
+        self.processed_files = min(self.total_files, self.processed_files + batch_size)
+        self.progress['value'] = self.processed_files
+        # Update current pair progress / Обновляем прогресс текущей пары
+        current_pair_value = min(self.progress_pair['maximum'], self.progress_pair['value'] + batch_size)
+        self.progress_pair['value'] = current_pair_value
         # Update text / Обновляем текст
         percent = 0 if self.total_files == 0 else int(self.processed_files * 100 / self.total_files)
         # Shorten path for display / Укорачиваем путь для отображения

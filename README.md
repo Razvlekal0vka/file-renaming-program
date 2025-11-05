@@ -41,6 +41,25 @@ cd file-renaming-program
 
 2. No installation required - the program uses only standard Python libraries.
 
+### Building Executable / Сборка исполняемого файла
+
+To build a standalone executable, install PyInstaller and use the provided spec file:
+Для сборки автономного исполняемого файла установите PyInstaller и используйте предоставленный spec файл:
+
+```bash
+# Install PyInstaller / Установка PyInstaller
+pip install pyinstaller
+
+# Build executable / Сборка исполняемого файла
+pyinstaller file_renamer.spec
+```
+
+The executable will be created in the `dist/` directory.
+Исполняемый файл будет создан в директории `dist/`.
+
+**Note / Примечание**: The spec file is configured for a GUI application (no console window).
+Файл spec настроен для GUI приложения (без консольного окна).
+
 ### Usage
 
 1. Run the program:
@@ -137,6 +156,25 @@ cd file-renaming-program
 ```
 
 2. Установка не требуется - программа использует только стандартные библиотеки Python.
+
+### Сборка исполняемого файла / Building Executable
+
+Для сборки автономного исполняемого файла установите PyInstaller и используйте предоставленный spec файл:
+To build a standalone executable, install PyInstaller and use the provided spec file:
+
+```bash
+# Установка PyInstaller / Install PyInstaller
+pip install pyinstaller
+
+# Сборка исполняемого файла / Build executable
+pyinstaller file_renamer.spec
+```
+
+Исполняемый файл будет создан в директории `dist/`.
+The executable will be created in the `dist/` directory.
+
+**Примечание / Note**: Файл spec настроен для GUI приложения (без консольного окна).
+The spec file is configured for a GUI application (no console window).
 
 ### Использование
 
