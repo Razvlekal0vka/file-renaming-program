@@ -20,6 +20,8 @@ A Python application with a graphical interface for batch renaming files by addi
 - **Theme Support**: Light and dark themes
 - **Windows Compatible**: Automatic filename sanitization for Windows to prevent errors
 - **Safe Operations**: Complete folder structure copying before renaming
+- **Flatten Mode**: Option to save all renamed files in a single folder (no subdirectories)
+- **Conflict Resolution**: Automatic handling of duplicate filenames with numbered suffixes
 
 ### Requirements
 
@@ -76,6 +78,7 @@ python file_renamer.py
    - Set separator between folder names (default: " + ")
    - Set quote symbol for folder names (default: single quote on Windows, double quote on other systems)
    - Optionally enable "Include root folder name" checkbox
+   - Optionally enable "All files in one folder" checkbox to save all files in a single directory (conflicts handled automatically)
 
 4. **Start Processing**:
    - Click "Start Processing" / "ЗАПУСТИТЬ ОБРАБОТКУ"
@@ -136,6 +139,8 @@ See `CHANGELOG.md` for version history and changes.
 - **Поддержка тем**: Светлая и темная темы
 - **Совместимость с Windows**: Автоматическая очистка имен файлов для Windows для предотвращения ошибок
 - **Безопасные операции**: Полное копирование структуры папок перед переименованием
+- **Режим плоской структуры**: Опция сохранения всех переименованных файлов в одну папку (без подпапок)
+- **Разрешение конфликтов**: Автоматическая обработка дублирующихся имен файлов с нумерованными суффиксами
 
 ### Требования
 
@@ -192,6 +197,7 @@ python file_renamer.py
    - Установите разделитель между названиями папок (по умолчанию: " + ")
    - Установите символ кавычек для названий папок (по умолчанию: одинарная кавычка в Windows, двойная в других системах)
    - При желании включите чекбокс "Включать название выбранной папки"
+   - При желании включите чекбокс "Все файлы в одну папку" для сохранения всех файлов в одной директории (конфликты обрабатываются автоматически)
 
 4. **Запуск обработки**:
    - Нажмите "ЗАПУСТИТЬ ОБРАБОТКУ"

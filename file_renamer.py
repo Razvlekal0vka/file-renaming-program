@@ -35,6 +35,8 @@ class FileRenamerApp:
         default_quote = "'" if os.name == 'nt' else '"'
         self.quote_var = tk.StringVar(value=default_quote)
         self.include_root_var = tk.BooleanVar(value=False)
+        # Flatten structure mode: all files in one folder / Режим плоской структуры: все файлы в одну папку
+        self.flatten_structure_var = tk.BooleanVar(value=False)
         
         self.setup_ui()
         
@@ -118,6 +120,11 @@ class FileRenamerApp:
         
         # Checkbox for including root folder name / Чекбокс включения имени выбранной папки
         ttk.Checkbutton(settings_frame, text="Включать название выбранной папки в наименование файлов", variable=self.include_root_var).grid(row=1, column=0, columnspan=4, sticky=tk.W, pady=(4,0))
+        
+        # Checkbox for flatten structure mode / Чекбокс режима плоской структуры
+        flatten_checkbox = ttk.Checkbutton(settings_frame, text="Все файлы в одну папку (без сохранения структуры)", 
+                                          variable=self.flatten_structure_var, command=self.on_flatten_mode_changed)
+        flatten_checkbox.grid(row=2, column=0, columnspan=4, sticky=tk.W, pady=(4,0))
         
         # Create tooltip for button / Создаем подсказку для кнопки
         self.create_tooltip(self.create_default_btn, 
@@ -342,6 +349,24 @@ class FileRenamerApp:
         if os.name == 'nt':
             sanitized = sanitized.rstrip('. ')
         return sanitized or "_"
+    
+    def on_flatten_mode_changed(self):
+        """
+        Handle flatten structure mode checkbox change with warning.
+        Обработка изменения чекбокса режима плоской структуры с предупреждением.
+        """
+        if self.flatten_structure_var.get():
+            warning_text = """Внимание! Режим "Все файлы в одну папку" включен.
+
+Все переименованные файлы будут сохранены в одну папку без сохранения структуры подпапок.
+
+Если несколько файлов получат одинаковое имя, к ним будут автоматически добавлены номера (например: file_1.txt, file_2.txt).
+
+Продолжить?"""
+            
+            if not messagebox.askyesno("Предупреждение", warning_text):
+                # User cancelled, uncheck the box / Пользователь отменил, снимаем галочку
+                self.flatten_structure_var.set(False)
     
     def create_tooltip(self, widget, text):
         """
@@ -672,18 +697,35 @@ class FileRenamerApp:
                     if dest_path.exists():
                         shutil.rmtree(dest_path)
                     
-                    # Copy entire folder structure / Копируем всю структуру папок
-                    if source_path.exists():
-                        shutil.copytree(source_path, dest_path)
+                    # Create destination folder / Создаем папку назначения
+                    if not dest_path.exists():
+                        dest_path.mkdir(parents=True, exist_ok=True)
                     
-                    # Rename files (optimized version) / Переименовываем файлы (оптимизированная версия)
-                    renamed_count = self.rename_files_optimized(
-                        dest_path,
-                        separator=self.separator_var.get(),
-                        quote=self.quote_var.get(),
-                        include_root=self.include_root_var.get(),
-                        root_name=source_path.name
-                    )
+                    # Choose processing mode / Выбираем режим обработки
+                    if self.flatten_structure_var.get():
+                        # Flatten mode: all files in one folder / Режим плоской структуры: все файлы в одну папку
+                        renamed_count = self.rename_files_flattened(
+                            source_path,
+                            dest_path,
+                            separator=self.separator_var.get(),
+                            quote=self.quote_var.get(),
+                            include_root=self.include_root_var.get(),
+                            root_name=source_path.name
+                        )
+                    else:
+                        # Structure mode: preserve folder hierarchy / Режим структуры: сохранять иерархию папок
+                        # Copy entire folder structure / Копируем всю структуру папок
+                        if source_path.exists():
+                            shutil.copytree(source_path, dest_path)
+                        
+                        # Rename files (optimized version) / Переименовываем файлы (оптимизированная версия)
+                        renamed_count = self.rename_files_optimized(
+                            dest_path,
+                            separator=self.separator_var.get(),
+                            quote=self.quote_var.get(),
+                            include_root=self.include_root_var.get(),
+                            root_name=source_path.name
+                        )
                     total_renamed += renamed_count
                     processed_pairs += 1
                     
@@ -762,6 +804,93 @@ class FileRenamerApp:
                             self.last_update_path = str(relative_path)
                     except Exception as e:
                         print(f"Ошибка переименования {file_path} в {new_path}: {e}")
+        
+        # Update remaining files / Обновляем оставшиеся файлы
+        if self.files_since_last_update > 0:
+            self.root.after(0, self.increment_progress_batch, self.last_update_path, self.files_since_last_update)
+            self.files_since_last_update = 0
+        
+        return total_renamed
+    
+    def rename_files_flattened(self, source_path, dest_path, separator=" + ", quote='"', include_root=False, root_name=None):
+        """
+        Copy and rename files to a single flat folder (no subdirectories).
+        Копировать и переименовать файлы в одну плоскую папку (без подпапок).
+        
+        Handles name conflicts by adding numbers (_1, _2, etc.).
+        Обрабатывает конфликты имен добавлением номеров (_1, _2 и т.д.).
+        """
+        safe_quote = self._effective_quote(quote or '')
+        safe_separator = self._effective_separator(separator or '')
+        total_renamed = 0
+        
+        # Track used filenames to handle conflicts / Отслеживаем использованные имена для обработки конфликтов
+        used_names = {}
+        
+        # Pre-calculate folder name formatting / Предварительно вычисляем форматирование имен папок
+        def format_folder_name(name):
+            return f"{safe_quote}{name}{safe_quote}" if safe_quote else name
+        
+        # Use os.walk for efficient directory traversal / Используем os.walk для эффективного обхода директорий
+        source_path_str = str(source_path)
+        for root, dirs, files in os.walk(source_path_str):
+            root_path_obj = Path(root)
+            
+            for filename in files:
+                file_path = root_path_obj / filename
+                
+                # Get relative path from source folder / Получаем относительный путь от исходной папки
+                try:
+                    relative_path = file_path.relative_to(source_path)
+                except ValueError:
+                    continue
+                
+                # Create new filename from folder names / Создаем новое имя файла из названий папок
+                folder_names = list(relative_path.parts[:-1])  # All parts except filename / Все части кроме имени файла
+                if include_root and root_name:
+                    folder_names.insert(0, root_name)
+                
+                file_stem = file_path.stem  # Filename without extension / Имя файла без расширения
+                file_ext = file_path.suffix  # File extension / Расширение файла
+                
+                # Combine folder names with user parameters / Объединяем названия папок с пользовательскими параметрами
+                if folder_names:
+                    folder_part = safe_separator.join(format_folder_name(name) for name in folder_names)
+                    base_name = f"{folder_part}{safe_separator}{file_stem}" if safe_separator else f"{folder_part}{file_stem}"
+                else:
+                    base_name = file_stem
+
+                sanitized_base = self._sanitize_output_name(base_name)
+                new_name = f"{sanitized_base}{file_ext}"
+                
+                # Handle name conflicts / Обрабатываем конфликты имен
+                final_name = new_name
+                if final_name in used_names:
+                    # Name conflict - add number / Конфликт имен - добавляем номер
+                    name_without_ext = sanitized_base
+                    counter = 1
+                    while final_name in used_names:
+                        counter += 1
+                        final_name = f"{name_without_ext}_{counter}{file_ext}"
+                
+                # Mark this name as used / Отмечаем это имя как использованное
+                used_names[final_name] = True
+                
+                # Copy file to destination / Копируем файл в папку назначения
+                dest_file_path = dest_path / final_name
+                
+                try:
+                    shutil.copy2(file_path, dest_file_path)
+                    total_renamed += 1
+                    
+                    # Batch UI updates for better performance / Батчинг обновлений UI для лучшей производительности
+                    self.files_since_last_update += 1
+                    if self.files_since_last_update >= self.ui_update_batch_size:
+                        self.root.after(0, self.increment_progress_batch, str(relative_path), self.files_since_last_update)
+                        self.files_since_last_update = 0
+                        self.last_update_path = str(relative_path)
+                except Exception as e:
+                    print(f"Ошибка копирования {file_path} в {dest_file_path}: {e}")
         
         # Update remaining files / Обновляем оставшиеся файлы
         if self.files_since_last_update > 0:

@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 и проект следует [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.2.0] - 2025-01-XX
+
+### Added / Добавлено
+- Flatten structure mode: option to save all files in a single folder
+- Режим плоской структуры: опция сохранения всех файлов в одну папку
+- Automatic name conflict resolution with numbered suffixes (_1, _2, etc.)
+- Автоматическое разрешение конфликтов имен с нумерованными суффиксами (_1, _2 и т.д.)
+- Warning dialog when enabling flatten mode
+- Диалог предупреждения при включении режима плоской структуры
+
+### Changed / Изменено
+- Added checkbox to toggle between structure preservation and flatten mode
+- Добавлен чекбокс для переключения между сохранением структуры и режимом плоской структуры
+- Improved file processing flexibility with two distinct modes
+- Улучшена гибкость обработки файлов с двумя различными режимами
+
+### Features / Функции
+- **Structure Mode** (default): Preserves folder hierarchy, renames files in place
+- **Режим структуры** (по умолчанию): Сохраняет иерархию папок, переименовывает файлы на месте
+- **Flatten Mode**: Copies all files to a single folder with new names, handles conflicts automatically
+- **Режим плоской структуры**: Копирует все файлы в одну папку с новыми именами, автоматически обрабатывает конфликты
+
 ## [1.1.0] - 2025-01-XX
 
 ### Added / Добавлено
